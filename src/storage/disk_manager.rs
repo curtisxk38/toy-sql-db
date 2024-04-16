@@ -7,6 +7,8 @@ struct DiskManager {
     length: usize
 }
 
+
+
 impl DiskManager {
     pub fn new(pages: i64) -> DiskManager {
             let length = PAGE_SIZE * pages;
@@ -17,6 +19,11 @@ impl DiskManager {
             DiskManager {memory: ptr, length}
             }
     }
+    // pub fn write_page(page_id: usize, data) {
+
+    // }
+
+    // pub fn read_page(page_id: usize) ->
 }
 
 impl Drop for DiskManager {
