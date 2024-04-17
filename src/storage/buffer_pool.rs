@@ -37,6 +37,12 @@ pub struct PageId(usize);
 #[derive(Eq, Hash, PartialEq, Copy, Clone)]
 pub struct FrameId(usize);
 
+impl From<usize> for FrameId {
+    fn from(val: usize) -> FrameId {
+        FrameId(val)
+    }
+}
+
 
 pub struct BufferPoolManager {
     replacer: LRUKReplacer,
@@ -92,7 +98,7 @@ impl BufferPoolManager {
         let frame_id = self.page_to_frame.get(page_id).unwrap();
     }
     
-    pub fn new_page(&self, page_id: PageId) -> Fra {
+    pub fn new_page(&self, page_id: PageId) {
     }
     
     pub fn delete_page(&self) {

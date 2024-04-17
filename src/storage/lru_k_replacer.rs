@@ -5,7 +5,6 @@ use std::collections::VecDeque;
 use std::collections::HashSet;
 
 use super::buffer_pool::FrameId;
-use super::buffer_pool::PageId;
 
 
 pub struct LRUKReplacer {
@@ -100,5 +99,159 @@ impl LRUKReplacer {
     pub fn size(&self) -> usize {
         // return numer of evictable frames
         return self.evictable.len()
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use crate::storage::buffer_pool::FrameId;
+
+    use super::LRUKReplacer;
+
+
+    #[test]
+    fn simple() {
+        let mut r = LRUKReplacer::new(2, 2);
+        assert_eq!(r.size(), 0);
+
+        r.record_access(FrameId::from(1));
+        assert_eq!(r.size(), 0);
+
+        r.record_access(FrameId::from(1));
+        r.record_access(FrameId::from(2));
+        r.record_access(FrameId::from(2));
+        r.set_evictable(FrameId::from(1), true);
+
+        assert_eq!(r.size(), 1);
+        assert!(r.evict().is_ok_and(|x| x == FrameId::from(1)));
+    }
+
+    #[test]
+    fn evict_correctly() {
+        let mut r = LRUKReplacer::new(2, 2);
+        assert_eq!(r.size(), 0);
+
+        r.record_access(FrameId::from(1));
+        assert_eq!(r.size(), 0);
+
+        r.record_access(FrameId::from(1));
+        r.record_access(FrameId::from(2));
+        r.record_access(FrameId::from(2));
+        r.set_evictable(FrameId::from(1), true);
+        r.set_evictable(FrameId::from(2), true);
+
+        assert_eq!(r.size(), 2);
+        assert!(r.evict().is_ok_and(|x| x == FrameId::from(1)));
+    }
+
+    #[test]
+    fn evict_correctly2() {
+        let mut r = LRUKReplacer::new(2, 2);
+        assert_eq!(r.size(), 0);
+
+        r.record_access(FrameId::from(1));
+        assert_eq!(r.size(), 0);
+
+        r.record_access(FrameId::from(1));
+        r.record_access(FrameId::from(2));
+        r.record_access(FrameId::from(2));
+        r.set_evictable(FrameId::from(1), true);
+        r.set_evictable(FrameId::from(2), true);
+        r.record_access(FrameId::from(1));
+
+        assert_eq!(r.size(), 2);
+        assert!(r.evict().is_ok_and(|x| x == FrameId::from(1)));
+    }
+
+    #[test]
+    fn evict_correctly3() {
+        let mut r = LRUKReplacer::new(2, 2);
+        assert_eq!(r.size(), 0);
+
+        r.record_access(FrameId::from(1));
+        assert_eq!(r.size(), 0);
+        r.record_access(FrameId::from(2));
+        r.record_access(FrameId::from(1));
+        
+        r.record_access(FrameId::from(2));
+        r.set_evictable(FrameId::from(1), true);
+        r.set_evictable(FrameId::from(2), true);
+        r.record_access(FrameId::from(1));
+
+
+        assert_eq!(r.size(), 2);
+        assert!(r.evict().is_ok_and(|x| x == FrameId::from(2)));
+    }
+
+    #[test]
+    fn evict_correctly_not_access() {
+        let mut r = LRUKReplacer::new(2, 2);
+        assert_eq!(r.size(), 0);
+
+        r.record_access(FrameId::from(1));
+        assert_eq!(r.size(), 0);
+        r.record_access(FrameId::from(2));
+        r.record_access(FrameId::from(1));
+        
+        r.set_evictable(FrameId::from(1), true);
+        r.set_evictable(FrameId::from(2), true);
+
+
+        assert_eq!(r.size(), 2);
+        assert!(r.evict().is_ok_and(|x| x == FrameId::from(2)));
+    }
+
+    #[test]
+    fn evict_correctly_not_access2() {
+        let mut r = LRUKReplacer::new(2, 2);
+        assert_eq!(r.size(), 0);
+
+        r.record_access(FrameId::from(1));
+        assert_eq!(r.size(), 0);
+        r.record_access(FrameId::from(1));
+        
+        r.set_evictable(FrameId::from(1), true);
+        r.set_evictable(FrameId::from(2), true);
+
+        r.record_access(FrameId::from(2));
+
+
+        assert_eq!(r.size(), 2);
+        assert!(r.evict().is_ok_and(|x| x == FrameId::from(2)));
+    }
+
+    #[test]
+    fn evict_correctly_one_evictable() {
+        let mut r = LRUKReplacer::new(2, 2);
+        assert_eq!(r.size(), 0);
+
+        r.record_access(FrameId::from(1));
+        assert_eq!(r.size(), 0);
+        r.record_access(FrameId::from(1));
+        
+        r.set_evictable(FrameId::from(1), true);
+
+        r.record_access(FrameId::from(2));
+
+
+        assert_eq!(r.size(), 1);
+        assert!(r.evict().is_ok_and(|x| x == FrameId::from(1)));
+    }
+
+    #[test]
+    fn evict_none_evictable() {
+        let mut r = LRUKReplacer::new(2, 2);
+        assert_eq!(r.size(), 0);
+
+        r.record_access(FrameId::from(1));
+        assert_eq!(r.size(), 0);
+        r.record_access(FrameId::from(1));
+        
+        r.record_access(FrameId::from(2));
+
+
+        assert_eq!(r.size(), 0);
+        assert!(r.evict().is_err());
     }
 }
