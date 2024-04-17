@@ -4,25 +4,28 @@ use std::time::SystemTime;
 use std::collections::VecDeque;
 use std::collections::HashSet;
 
+use super::buffer_pool::FrameId;
+use super::buffer_pool::PageId;
 
-struct LRUKReplace {
+
+pub struct LRUKReplacer {
     num_frames: usize,
     k: usize,
     //recently_evicted: HashMap<usize, SystemTime>,
-    access_histories: HashMap<usize, VecDeque<SystemTime>>,
-    evictable: HashSet<usize>,
+    access_histories: HashMap<FrameId, VecDeque<SystemTime>>,
+    evictable: HashSet<FrameId>,
 }
 
-struct EvictionError {}
+pub struct EvictionError {}
 
-impl LRUKReplace {
-    pub fn new(num_frames: usize, k: usize) -> LRUKReplace {
-        LRUKReplace {num_frames, k, access_histories: HashMap::new(), evictable: HashSet::new()}
+impl LRUKReplacer {
+    pub fn new(num_frames: usize, k: usize) -> LRUKReplacer {
+        LRUKReplacer {num_frames, k, access_histories: HashMap::new(), evictable: HashSet::new()}
     }
 
-    pub fn evict(&self) -> Result<usize, EvictionError> {
+    pub fn evict(&self) -> Result<FrameId, EvictionError> {
         // returns frame id to evict or error on failure to evict
-        let mut to_evict: Option<usize> = None;
+        let mut to_evict: Option<FrameId> = None;
         let mut to_evict_access = SystemTime::now();
         for evictable_frame in &self.evictable {
              match self.access_histories.get(&evictable_frame) {
@@ -58,7 +61,7 @@ impl LRUKReplace {
         }
     }
 
-    pub fn record_access(&mut self, frame_id: usize) {
+    pub fn record_access(&mut self, frame_id: FrameId) {
         // record that given frame was accessed
         // call after page is pinned in buffer pool
         let now = SystemTime::now();
@@ -78,14 +81,14 @@ impl LRUKReplace {
 
     }
 
-    pub fn remove(&mut self, frame_id: usize) {
+    pub fn remove(&mut self, frame_id: FrameId) {
         // clear access history for this frame
         // call after buffer pool deletes the frame
         self.evictable.remove(&frame_id);
         self.access_histories.remove(&frame_id);
     }
 
-    pub fn set_evictable(&mut self, frame_id: usize, set_evictable: bool) {
+    pub fn set_evictable(&mut self, frame_id: FrameId, set_evictable: bool) {
         // when pin count of a page reaches 0, its corresponding frame is marked evictable and replacer's size is incremented.
         if set_evictable {
             self.evictable.insert(frame_id);

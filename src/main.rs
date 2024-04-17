@@ -1,11 +1,12 @@
 use std::{fs, io};
 
+use storage::buffer_pool::BufferPoolManager;
+
 mod storage;
 
 fn init() -> std::io::Result<()> {
     println!("init");
     let _ = fs::create_dir(storage::buffer_pool::DATA_DIR);
-    let _ = storage::buffer_pool::create_directory_page();
     Ok(())
 }
 
@@ -20,6 +21,7 @@ fn main() {
     init();
     let mut input = String::new();
     let stdin = io::stdin();
+    let buffer_pool = BufferPoolManager::new(4, 2);
     loop {
         print!("> ");
         io::Write::flush(&mut io::stdout()).ok().expect("Couldn't flush stdout");
