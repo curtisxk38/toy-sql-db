@@ -5,7 +5,7 @@ use crate::config::config::{self, DATA_FILE, PAGE_SIZE};
 use super::buffer_pool::{FrameId, PageId};
 use std::{fs::{self, File, OpenOptions}, io::{Read, Seek, SeekFrom, Write}, path::PathBuf};
 
-struct DiskManager {
+pub struct DiskManager {
     file_dir: PathBuf,
     file: File,
 }
@@ -32,20 +32,20 @@ impl DiskManager {
             }
     }
 
-    fn get_file(&self, page_id: PageId) -> PageLocation{
+    fn get_file(&self, page_id: &PageId) -> PageLocation{
         // for now all pages live in one file
         let index: usize = page_id.temp();
-        PageLocation {page_id, file: self.file_dir.join(DATA_FILE), index: PathIndex(index) }
+        PageLocation {page_id: page_id.clone(), file: self.file_dir.join(DATA_FILE), index: PathIndex(index) }
     }
 
-    pub fn write_page(&mut self, page_id: PageId, data: &Vec<u8>) {
+    pub fn write_page(&mut self, page_id: &PageId, data: &[u8]) {
         let loc = self.get_file(page_id);
         self.file.seek(SeekFrom::Start((loc.index.0 * PAGE_SIZE).try_into().unwrap())).unwrap();
         self.file.write(data).unwrap();
         self.file.flush().unwrap();
     }
 
-    pub fn read_page(&mut self, page_id: PageId) -> Vec<u8> {
+    pub fn read_page(&mut self, page_id: &PageId) -> Vec<u8> {
         // for now all pages rae in one file
         let loc = self.get_file(page_id);
         self.file.seek(SeekFrom::Start((loc.index.0 * PAGE_SIZE).try_into().unwrap())).unwrap();
@@ -66,8 +66,9 @@ mod tests {
     fn simple() {
         let mut dm = DiskManager::new();
         let data = vec![1; PAGE_SIZE];
-        dm.write_page(PageId::from(0), &data);
-        let r = dm.read_page(PageId::from(0));
+        let p = PageId::from(0);
+        dm.write_page(&p, &data);
+        let r = dm.read_page(&p);
         assert_eq!(r, data);
     }
 }
