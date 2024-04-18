@@ -1,17 +1,25 @@
-use std::{fs, io};
+use std::{fs::{self, File}, io, path::PathBuf};
 
 use storage::buffer_pool::BufferPoolManager;
 
 mod storage;
+mod config;
+
 
 fn init() -> std::io::Result<()> {
     println!("init");
-    let _ = fs::create_dir(storage::buffer_pool::DATA_DIR);
+    
+    let _ = fs::create_dir(config::config::DATA_DIR);
+    let dir = PathBuf::from(config::config::DATA_DIR);
+    let data_file_path = dir.join(config::config::DATA_FILE);
+    if !data_file_path.exists() {
+        File::create(config::config::DATA_FILE).unwrap();
+    }
     Ok(())
 }
 
 fn cleanup() -> std::io::Result<()> {
-    fs::remove_dir_all(storage::buffer_pool::DATA_DIR)?;
+    fs::remove_dir_all(config::config::DATA_DIR)?;
     println!("cleaned up!");
     Ok(())
 }

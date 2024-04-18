@@ -3,10 +3,11 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
 
+use crate::config::config::PAGE_SIZE;
+
 use super::lru_k_replacer::LRUKReplacer;
 
 
-pub const DATA_DIR: &str = "data";
 
 #[derive(Clone)]
 pub struct PageTableEntry {
@@ -34,6 +35,19 @@ pub struct DirectoryEntry {
 #[derive(Eq, Hash, PartialEq, Clone)]
 pub struct PageId(usize);
 
+impl PageId {
+    pub fn temp(&self) -> usize {
+        self.0
+    }
+}
+
+impl From<usize> for PageId {
+    fn from(val: usize) -> PageId {
+        PageId(val)
+    }
+}
+
+
 #[derive(Eq, Hash, PartialEq, Copy, Clone)]
 pub struct FrameId(usize);
 
@@ -47,7 +61,8 @@ impl From<usize> for FrameId {
 pub struct BufferPoolManager {
     replacer: LRUKReplacer,
     page_table: Vec<PageTableEntry>,
-    page_to_frame: HashMap<PageId, FrameId>
+    page_to_frame: HashMap<PageId, FrameId>,
+    memory_pool: Vec<u8>
 }
 
 impl BufferPoolManager {
@@ -55,6 +70,7 @@ impl BufferPoolManager {
         BufferPoolManager {replacer: LRUKReplacer::new( pool_size, k),
         page_table: vec![PageTableEntry::new(); pool_size],
         page_to_frame: HashMap::new(),
+        memory_pool: vec![0u8; pool_size * PAGE_SIZE]
     
         }
     }
