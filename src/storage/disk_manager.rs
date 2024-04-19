@@ -49,7 +49,7 @@ impl DiskManager {
         // for now all pages rae in one file
         let loc = self.get_file(page_id);
         self.file.seek(SeekFrom::Start((loc.index.0 * PAGE_SIZE).try_into().unwrap())).unwrap();
-        let mut buffer = [0; PAGE_SIZE];
+        let mut buffer = [0; PAGE_SIZE]; // TODO take mutable slice as param and .read into it directly
         self.file.read(&mut buffer).unwrap();
         buffer.to_vec()
     }
