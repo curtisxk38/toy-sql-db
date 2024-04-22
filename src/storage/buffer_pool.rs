@@ -12,10 +12,11 @@ use super::lru_k_replacer::LRUKReplacer;
 
 
 pub struct PageTableEntry<'a> {
-    page: Option<Page<'a>>,
+    page_id: Option<PageId>,
     pin_count: i64,
     is_dirty: bool,
-    frame_id: FrameId
+    frame_id: FrameId,
+    data: &'a mut [u8],
 
 }
 
@@ -26,8 +27,8 @@ pub struct Page<'a> {
 
 
 impl  <'a> PageTableEntry<'a> {
-    pub fn new(frame_id: FrameId) -> PageTableEntry<'a> {
-        PageTableEntry {page: None, pin_count: 0, is_dirty: false, frame_id }
+    pub fn new(frame_id: FrameId, data: &'a mut [u8]) -> PageTableEntry<'a> {
+        PageTableEntry {page_id: None, pin_count: 0, is_dirty: false, frame_id, data }
     }
 }
 
@@ -65,36 +66,33 @@ pub struct BufferPoolManager<'a> {
     replacer: LRUKReplacer,
     page_table: Vec<PageTableEntry<'a>>,
     page_to_frame: HashMap<PageId, FrameId>,
-    memory_pool: Vec<u8>,
     disk_manager: DiskManager,
     // temp
     next_page_id: usize,
 }
 
 impl <'a> BufferPoolManager<'a> {
-    pub fn new(pool_size: usize, k: usize) -> BufferPoolManager<'a> {
+    pub fn new(memory: &'a mut Vec<u8>,pool_size: usize, k: usize) -> BufferPoolManager<'a> {
+        
         BufferPoolManager {replacer: LRUKReplacer::new( pool_size, k),
-        page_table: (0..pool_size).map(|f| PageTableEntry::new(FrameId::from(f))).collect(),
+        page_table: memory.chunks_exact_mut(PAGE_SIZE).enumerate().map(|(index, memory)| 
+        PageTableEntry::new(FrameId::from(index), memory)
+    ).collect(),
         page_to_frame: HashMap::new(),
-        memory_pool: vec![0u8; pool_size * PAGE_SIZE],
         disk_manager: DiskManager::new(),
-            next_page_id: 0,
+        next_page_id: 0,
         }
     }
 
-    pub fn fetch_page (&'a mut self, page_id: PageId) -> &Option<Page<'a>> {
+    pub fn fetch_page (&mut self, page_id: PageId) -> Option<&PageTableEntry<'a>> {
         // return none if no page is available in the free list and all other pages are currently pinned
         match self.page_to_frame.get(&page_id) {
             Some(frame_id) => {
                 let pte = &mut self.page_table[frame_id.0];
                 self.replacer.record_access(*frame_id);
                 // TODO set not evictable?
-                let page = Page {
-                    page_id, 
-                    data: &mut self.memory_pool[(frame_id.0 * PAGE_SIZE) .. (frame_id.0 + 1) * PAGE_SIZE]
-                };
-                pte.page = Some(page);
-                &self.page_table[frame_id.0].page
+                pte.page_id = Some(page_id);
+                Some(&self.page_table[frame_id.0])
             },
             None => {
                 // TODO use a better datastructure?
@@ -102,20 +100,18 @@ impl <'a> BufferPoolManager<'a> {
                 
                 match self.find_free_frame() {
                     Some(frame_id) => {
-                        let buf = self.disk_manager.read_page(&page_id);
-                        self.memory_pool[(frame_id.0 * PAGE_SIZE) .. (frame_id.0 + 1) * PAGE_SIZE].copy_from_slice(&buf);
-
                         let pte = &mut self.page_table[frame_id.0];
+                        
+                        let buf = self.disk_manager.read_page(&page_id);
+                        pte.data.copy_from_slice(&buf);
+
+                        
                         self.replacer.record_access(frame_id);
                         // TODO set not evictable?
-                        let page = Page {
-                            page_id: page_id.clone(), 
-                            data: &mut self.memory_pool[(frame_id.0 * PAGE_SIZE) .. (frame_id.0 + 1) * PAGE_SIZE]
-                        };
 
-                        self.page_to_frame.insert(page_id, frame_id);
-                        pte.page = Some(page);
-                        return &self.page_table[frame_id.0].page;
+                        self.page_to_frame.insert(page_id.clone(), frame_id);
+                        pte.page_id = Some(page_id);
+                        return Some(&self.page_table[frame_id.0]);
                     }
                     None => {
                         
@@ -123,30 +119,24 @@ impl <'a> BufferPoolManager<'a> {
                         match self.replacer.evict() {
                             Ok(frame_id) => {
                                 // remove old frame
-                                self.remove_old_page_from_frame(frame_id);
+                                
+                                self.remove_old_page_from_frame(&frame_id);
                                 // read in new frame
-                                
-                                let buf = self.disk_manager.read_page(&page_id);
-                                self.memory_pool[(frame_id.0 * PAGE_SIZE) .. (frame_id.0 + 1) * PAGE_SIZE].copy_from_slice(&buf);
-                                
-                                
-                                //self.load_page_into_frame(&page_id, frame_id);
                                 let pte = &mut self.page_table[frame_id.0];
+                                let buf = self.disk_manager.read_page(&page_id);
+                                pte.data.copy_from_slice(&buf);
+                                
                                 self.replacer.record_access(pte.frame_id);
-                                let page = Page {
-                                    page_id: page_id.clone(), 
-                                    data: &mut self.memory_pool[(pte.frame_id.0 * PAGE_SIZE) .. (pte.frame_id.0 + 1) * PAGE_SIZE]
-                                };
                                 
                                 self.page_to_frame.insert(page_id.clone(), pte.frame_id);
-                                pte.page = Some(page);
+                                pte.page_id = Some(page_id);
                                 pte.is_dirty = false;
 
                                 
-                                return &self.page_table[frame_id.0].page
+                                return Some(&self.page_table[frame_id.0]);
                             },
                             Err(_) => {
-                                &None
+                                None
                             }
                         }
                     }
@@ -155,34 +145,22 @@ impl <'a> BufferPoolManager<'a> {
         }
     }
 
-    fn load_page_into_frame(&'a mut self, page_id: &PageId, frame_id: FrameId) {
+    fn remove_old_page_from_frame(&mut self, frame_id: &FrameId) {
         let pte = &mut self.page_table[frame_id.0];
-        self.replacer.record_access(pte.frame_id);
-        let page = Page {
-            page_id: page_id.clone(), 
-            data: &mut self.memory_pool[(pte.frame_id.0 * PAGE_SIZE) .. (pte.frame_id.0 + 1) * PAGE_SIZE]
-        };
-        
-        self.page_to_frame.insert(page_id.clone(), pte.frame_id);
-        pte.page = Some(page);
-    }
-
-    fn remove_old_page_from_frame(&mut self, frame_id: FrameId) {
-        let pte = &mut self.page_table[frame_id.0];
+        let page_id = pte.page_id.as_ref().unwrap().clone();
         // remove old frame
-        let old_page = pte.page.as_ref().unwrap();
         if pte.is_dirty {
-            self.disk_manager.write_page(&old_page.page_id, &self.memory_pool[(frame_id.0 * PAGE_SIZE) .. (frame_id.0 + 1) * PAGE_SIZE]);
+            self.disk_manager.write_page(&page_id, pte.data);
         
         }
-        self.page_to_frame.remove(&old_page.page_id);
-        self.replacer.remove(frame_id);
+        self.page_to_frame.remove(&page_id);
+        self.replacer.remove(pte.frame_id);
     }
 
     fn find_free_frame(&self) -> Option<FrameId> {
-        for (frame_id, pte) in self.page_table.iter().enumerate() {
-            if pte.page.is_none() {
-                return Some(FrameId::from(frame_id));
+        for pte in self.page_table.iter() {
+            if pte.page_id.is_none() {
+                return Some(pte.frame_id);
             }
         }
         None
@@ -193,7 +171,10 @@ impl <'a> BufferPoolManager<'a> {
         let frame_id = self.page_to_frame.get(&page_id).unwrap();
         self.page_table[frame_id.0].pin_count -= 1;
         self.page_table[frame_id.0].is_dirty |= is_dirty;
-        // TODO call replacer.set_evictable
+        if self.page_table[frame_id.0].pin_count <= 0 {
+            self.replacer.set_evictable(frame_id.clone(), true)
+        }
+        
     }
     
     pub fn flush_page(&mut self, page_id: &PageId) {
@@ -202,15 +183,59 @@ impl <'a> BufferPoolManager<'a> {
         let frame_id = self.page_to_frame.get(page_id).unwrap();
         let pte = &mut self.page_table[frame_id.0];
         
-        let page = pte.page.as_ref().unwrap();
-        self.disk_manager.write_page(&page.page_id, page.data);
+        self.disk_manager.write_page(pte.page_id.as_ref().unwrap(), pte.data);
 
     }
     
-    pub fn new_page(&self) -> Option<Page> {
+    pub fn new_page(&mut self) -> Option<&PageTableEntry<'a>> {
         // create a new page for new data that isnt in any page yet
+        
+        match self.find_free_frame() {
+            Some(frame_id) => {
+                let pte = &mut self.page_table[frame_id.0];
+                let page_id = PageId::from(self.next_page_id);
+                self.next_page_id += 1;
+                // zero out data
+                pte.data.fill(0);
 
-        None
+                
+                self.replacer.record_access(frame_id);
+                // TODO set not evictable?
+
+                self.page_to_frame.insert(page_id.clone(), frame_id);
+                pte.page_id = Some(page_id);
+                pte.is_dirty = false;
+                return Some(&self.page_table[frame_id.0]);
+            }
+            None => {
+                // no free frames, have to evict
+                match self.replacer.evict() {
+                    Ok(frame_id) => {
+                        // remove old frame
+                        self.remove_old_page_from_frame(&frame_id);
+
+                        let pte = &mut self.page_table[frame_id.0];
+                        let page_id = PageId::from(self.next_page_id);
+                        self.next_page_id += 1;
+                        // zero out data
+                        pte.data.fill(0);
+                    
+                        
+                        self.replacer.record_access(pte.frame_id);
+                        
+                        self.page_to_frame.insert(page_id.clone(), pte.frame_id);
+                        pte.page_id = Some(page_id);
+                        pte.is_dirty = false;
+
+                        
+                        return Some(&self.page_table[frame_id.0]);
+                    },
+                    Err(_) => {
+                        None
+                    }
+                }
+            }
+        }
     }
     
     pub fn delete_page(&mut self, page_id: &PageId) -> bool {
@@ -224,7 +249,7 @@ impl <'a> BufferPoolManager<'a> {
         self.page_to_frame.remove(page_id);
         self.flush_page(page_id);
         let pte = &mut self.page_table[frame_id.0];
-        pte.page = None;
+        pte.page_id = None;
         pte.pin_count = 0;
         pte.is_dirty = false;
         return true;        
@@ -234,8 +259,8 @@ impl <'a> BufferPoolManager<'a> {
     pub fn flush_all_pages(&mut self) {
         let mut page_ids = Vec::new();
         for page_table_entry in &self.page_table {
-            if let Some(page) = &page_table_entry.page {
-                page_ids.push(page.page_id.clone());
+            if let Some(page_id) = &page_table_entry.page_id {
+                page_ids.push(page_id.clone());
             }
         }
         for page_id in &page_ids {
@@ -247,3 +272,32 @@ impl <'a> BufferPoolManager<'a> {
 }
 
 
+#[cfg(test)]
+mod tests {
+    use crate::{config::config::PAGE_SIZE, storage::buffer_pool::{BufferPoolManager, FrameId, PageId}};
+
+    #[test]
+    fn simple() {
+        let pool_size= 4;
+        let mut memory = vec![0u8; pool_size * PAGE_SIZE];
+        let mut buffer_pool = BufferPoolManager::new(&mut memory, pool_size, 2);
+        let p = buffer_pool.new_page().unwrap();
+        assert!(p.page_id == Some(PageId(0)));
+        let pte = buffer_pool.fetch_page(PageId::from(0)).unwrap();
+        assert_eq!(vec![0; PAGE_SIZE], pte.data);
+    }
+
+    #[test]
+    fn simple2() {
+        let pool_size= 2;
+        let mut memory = vec![0u8; pool_size * PAGE_SIZE];
+        let mut buffer_pool = BufferPoolManager::new(&mut memory, pool_size, 2);
+        let p = buffer_pool.new_page().unwrap();
+        assert!(p.page_id == Some(PageId(0)));
+        let p2 = buffer_pool.new_page().unwrap();
+        assert!(p2.page_id == Some(PageId(1)));
+        buffer_pool.unpin_page(PageId(0), false);
+        let p3 = buffer_pool.new_page().unwrap();
+        assert!(p3.page_id == Some(PageId(2)));
+    }
+}

@@ -1,5 +1,6 @@
 use std::{fs::{self, File}, io, path::PathBuf};
 
+use config::config::PAGE_SIZE;
 use storage::buffer_pool::BufferPoolManager;
 
 mod storage;
@@ -29,7 +30,9 @@ fn main() {
     init();
     let mut input = String::new();
     let stdin = io::stdin();
-    let buffer_pool = BufferPoolManager::new(4, 2);
+    let pool_size=4;
+    let mut memory = vec![0u8; pool_size * PAGE_SIZE];
+    let buffer_pool = BufferPoolManager::new(&mut memory, pool_size, 2);
     loop {
         print!("> ");
         io::Write::flush(&mut io::stdout()).ok().expect("Couldn't flush stdout");
