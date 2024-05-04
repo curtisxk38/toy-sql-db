@@ -1,10 +1,12 @@
 use std::{fs::{self, File}, io, path::PathBuf};
 
 use config::config::PAGE_SIZE;
+use parse::{parser::Parser, scanner::Scanner};
 use storage::buffer_pool::BufferPoolManager;
 
 mod storage;
 mod config;
+mod parse;
 
 
 fn init() -> std::io::Result<()> {
@@ -33,6 +35,8 @@ fn main() {
     let pool_size=4;
     let mut memory = vec![0u8; pool_size * PAGE_SIZE];
     let buffer_pool = BufferPoolManager::new(&mut memory, pool_size, 2);
+    let mut scanner = Scanner::new();
+    let mut parser = Parser::new();
     loop {
         print!("> ");
         io::Write::flush(&mut io::stdout()).ok().expect("Couldn't flush stdout");
@@ -43,7 +47,26 @@ fn main() {
                 if chars_read == 0 {
                     break;
                 }
-                //self.run(&input);
+                match scanner.scan(&input) {
+                    Ok(_) => {
+                        let r = parser.parse(&scanner.tokens);
+                        match r {
+                            Ok(statements) => {
+                                println!("{:?}", statements)
+                            },
+                            Err(_) => {
+                                println!("tokens: {:?}", scanner.tokens);
+                                for error in &parser.errors {
+                                    println!("{:?}", error);
+                                }
+                                parser.errors.clear();
+                            },
+                        }
+                    },
+                    Err(e) => {
+                        println!("error: {:?}", e);
+                    },
+                }
             }
             Err(error) => println!("error: {}", error),
         }
