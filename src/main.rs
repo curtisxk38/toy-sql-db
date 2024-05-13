@@ -7,7 +7,7 @@ use storage::buffer_pool::BufferPoolManager;
 mod storage;
 mod config;
 mod parse;
-
+mod catalog;
 
 fn init() -> std::io::Result<()> {
     println!("init");
