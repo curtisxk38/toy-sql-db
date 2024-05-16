@@ -16,17 +16,17 @@ use crate::config::config::PAGE_SIZE;
  *  | NextPageId (4)| NumTuples(2) | NumDeletedTuples(2) |
  *  ----------------------------------------------------------------------------
  *  ----------------------------------------------------------------
- *  | Tuple_1 entry (4) | Tuple_2 entry (4) | ... |
+ *  | Tuple_1 entry (8) | Tuple_2 entry (8) | ... |
  *  ----------------------------------------------------------------
  * 
  * 
  *  Tuple entry format:
- *  | tuple offset (4) | tuple size (4)  |
+ *  | tuple offset (2) | tuple size (2)  | tuple meta (4)
  */
 
 const TABLE_PAGE_HEADER_SIZE: usize = 8; // in bytes
 
-const SLOT_ARRAY_ENTRY_SIZE: usize = 4;
+const SLOT_ARRAY_ENTRY_SIZE: usize = 8;
 
 #[derive(Eq, Hash, PartialEq, Clone)]
 pub struct TupleId(usize);
@@ -95,14 +95,21 @@ impl <'a> TablePage<'a> {
                 self.set_num_tuples(tuple_id+1);
                 
                 // copy data in
-                self.page_data.borrow_mut()[tuple_offset..tuple_offset+tuple.len()].copy_from_slice(&tuple);
+                self.page_data.borrow_mut()[tuple_offset..tuple_offset+tuple.len()].copy_from_slice(&tuple[..]);
 
                 // update slot array
-                let tuple_offset_bytes: u32 = tuple_offset.try_into().unwrap();
+                let tuple_offset_bytes: u16 = tuple_offset.try_into().unwrap();
                 let tuple_offset_bytes = tuple_offset_bytes.to_le_bytes();
+
+                let tuple_size: u16 = tuple.len().try_into().unwrap();
+                let tuple_size_bytes = tuple_size.to_le_bytes();
+
+                let mut offset_size_bytes: [u8; 8] = [0; SLOT_ARRAY_ENTRY_SIZE]; //todo, tuple meta
+                offset_size_bytes[0..2].copy_from_slice(&tuple_offset_bytes);
+                offset_size_bytes[2..4].copy_from_slice(&tuple_size_bytes);
                 
                 let new_slot_array_index: usize = TABLE_PAGE_HEADER_SIZE + Into::<usize>::into(tuple_id) * SLOT_ARRAY_ENTRY_SIZE;
-                self.page_data.borrow_mut()[new_slot_array_index..new_slot_array_index+SLOT_ARRAY_ENTRY_SIZE].copy_from_slice(&tuple_offset_bytes);
+                self.page_data.borrow_mut()[new_slot_array_index..new_slot_array_index+SLOT_ARRAY_ENTRY_SIZE].copy_from_slice(&offset_size_bytes);
 
                 Some(TupleId(tuple_id.into()))
             },
@@ -113,9 +120,10 @@ impl <'a> TablePage<'a> {
     pub fn get_tuple(&self, tuple_id: TupleId) -> Vec<u8> {
         if tuple_id.0 < self.get_num_tuples().into() {
             let slot_index = TABLE_PAGE_HEADER_SIZE + tuple_id.0 * SLOT_ARRAY_ENTRY_SIZE;
-            let tuple_offset = &self.page_data.borrow()[slot_index..slot_index+SLOT_ARRAY_ENTRY_SIZE];
-            let tuple_offset: usize = u32::from_le_bytes(tuple_offset.try_into().unwrap()).try_into().unwrap();
-            let tuple_size = 0; // TODO fix
+            
+            let tuple_offset_size_meta = &self.page_data.borrow()[slot_index..slot_index+SLOT_ARRAY_ENTRY_SIZE];
+            let tuple_offset: usize = u16::from_le_bytes(tuple_offset_size_meta[0..2].try_into().unwrap()).try_into().unwrap();
+            let tuple_size: usize = u16::from_le_bytes(tuple_offset_size_meta[2..4].try_into().unwrap()).try_into().unwrap();
 
             let tuple = self.page_data.borrow()[tuple_offset..tuple_offset+tuple_size].to_vec();
 
@@ -131,7 +139,7 @@ impl <'a> TablePage<'a> {
 mod tests {
     use std::{cell::RefCell, rc::Rc};
 
-    use crate::config::config::PAGE_SIZE;
+    use crate::{config::config::PAGE_SIZE, storage::table_page::TupleId};
 
     use super::{TablePage};
 
@@ -156,5 +164,30 @@ mod tests {
         let expected = 4000;
 
         assert_eq!(offset, expected);
+    }
+    #[test]
+    fn test_insert_tuple() {
+        let mut page_data: Vec<u8> = vec![
+            0; PAGE_SIZE
+        ];
+        let start = vec![
+            0,0,0,0, //next page id
+            1,0, // num tuples
+            0,0, //num deleted tuples
+            // start of slot array
+            0xC0, 0x0F, // offset = 4032
+            0x40, 0x00 // size = 64
+        ];
+        page_data[..start.len()].copy_from_slice(&start);
+        let mut p = TablePage::new(Rc::from(RefCell::from(&mut page_data[..])));
+        assert_eq!(p.get_num_tuples(), 1);
+        
+        let tuple: Vec<u8> = vec![0xFF; 32];
+
+        let res = p.insert_tuple(tuple.clone());
+        assert!(res.is_some_and(|x| x == TupleId(1)));
+
+        let res = p.get_tuple(TupleId(1));
+        assert_eq!(res, tuple);
     }
 }
