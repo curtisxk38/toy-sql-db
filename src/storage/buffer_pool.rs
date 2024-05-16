@@ -1,8 +1,10 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::prelude::*;
 use std::iter;
 use std::path::Path;
+use std::rc::Rc;
 
 use crate::config::config::PAGE_SIZE;
 
@@ -16,19 +18,14 @@ pub struct PageTableEntry<'a> {
     pin_count: i64,
     is_dirty: bool,
     frame_id: FrameId,
-    data: &'a mut [u8],
+    data: Rc<RefCell<&'a mut [u8]>>,
 
-}
-
-pub struct Page<'a> {
-    page_id: PageId,
-    data: &'a mut [u8]
 }
 
 
 impl  <'a> PageTableEntry<'a> {
     pub fn new(frame_id: FrameId, data: &'a mut [u8]) -> PageTableEntry<'a> {
-        PageTableEntry {page_id: None, pin_count: 0, is_dirty: false, frame_id, data }
+        PageTableEntry {page_id: None, pin_count: 0, is_dirty: false, frame_id, data: Rc::from(RefCell::from(data)) }
     }
 }
 
@@ -103,7 +100,7 @@ impl <'a> BufferPoolManager<'a> {
                         let pte = &mut self.page_table[frame_id.0];
                         
                         let buf = self.disk_manager.read_page(&page_id);
-                        pte.data.copy_from_slice(&buf);
+                        pte.data.borrow_mut().copy_from_slice(&buf);
 
                         
                         self.replacer.record_access(frame_id);
@@ -124,7 +121,7 @@ impl <'a> BufferPoolManager<'a> {
                                 // read in new frame
                                 let pte = &mut self.page_table[frame_id.0];
                                 let buf = self.disk_manager.read_page(&page_id);
-                                pte.data.copy_from_slice(&buf);
+                                pte.data.borrow_mut().copy_from_slice(&buf);
                                 
                                 self.replacer.record_access(pte.frame_id);
                                 
@@ -150,7 +147,7 @@ impl <'a> BufferPoolManager<'a> {
         let page_id = pte.page_id.as_ref().unwrap().clone();
         // remove old frame
         if pte.is_dirty {
-            self.disk_manager.write_page(&page_id, pte.data);
+            self.disk_manager.write_page(&page_id, &pte.data.borrow());
         
         }
         self.page_to_frame.remove(&page_id);
@@ -183,7 +180,7 @@ impl <'a> BufferPoolManager<'a> {
         let frame_id = self.page_to_frame.get(page_id).unwrap();
         let pte = &mut self.page_table[frame_id.0];
         
-        self.disk_manager.write_page(pte.page_id.as_ref().unwrap(), pte.data);
+        self.disk_manager.write_page(pte.page_id.as_ref().unwrap(), &pte.data.borrow());
 
     }
     
@@ -196,7 +193,7 @@ impl <'a> BufferPoolManager<'a> {
                 let page_id = PageId::from(self.next_page_id);
                 self.next_page_id += 1;
                 // zero out data
-                pte.data.fill(0);
+                pte.data.borrow_mut().fill(0);
 
                 
                 self.replacer.record_access(frame_id);
@@ -218,7 +215,7 @@ impl <'a> BufferPoolManager<'a> {
                         let page_id = PageId::from(self.next_page_id);
                         self.next_page_id += 1;
                         // zero out data
-                        pte.data.fill(0);
+                        pte.data.borrow_mut().fill(0);
                     
                         
                         self.replacer.record_access(pte.frame_id);
@@ -284,7 +281,7 @@ mod tests {
         let p = buffer_pool.new_page().unwrap();
         assert!(p.page_id == Some(PageId(0)));
         let pte = buffer_pool.fetch_page(PageId::from(0)).unwrap();
-        assert_eq!(vec![0; PAGE_SIZE], pte.data);
+        assert_eq!(vec![0; PAGE_SIZE], *pte.data.borrow());
     }
 
     #[test]
