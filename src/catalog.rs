@@ -1,1 +1,2 @@
-mod catalog_page;
+pub mod table_schema;
+pub mod catalog;

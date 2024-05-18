@@ -1,42 +1,60 @@
-use std::{fs::{self, File}, io, path::PathBuf};
+use std::{fs::{self, File, OpenOptions}, io, path::PathBuf, vec};
 
+use catalog::{table_schema::TableSchema};
 use config::config::PAGE_SIZE;
 use parse::{parser::Parser, scanner::Scanner};
 use storage::buffer_pool::BufferPoolManager;
+
+use crate::{catalog::catalog::load_catalog, execution::execution::execute};
 
 mod storage;
 mod config;
 mod parse;
 mod catalog;
+mod execution;
 
-fn init() -> std::io::Result<()> {
+
+
+fn init(buffer_pool: &mut BufferPoolManager) -> std::io::Result<Vec<TableSchema>> {
     println!("init");
     
-    let _ = fs::create_dir(config::config::DATA_DIR);
     let dir = PathBuf::from(config::config::DATA_DIR);
     let data_file_path = dir.join(config::config::DATA_FILE);
+    let tables;
     if !data_file_path.exists() {
         File::create(config::config::DATA_FILE).unwrap();
+        tables = vec![];
+    } else {
+        let file = OpenOptions::new().read(true).open(data_file_path).unwrap();
+        if file.metadata().unwrap().len() > 0 {
+            tables = load_catalog(buffer_pool);
+        } else {
+            tables = Vec::new();
+        }
+        
     }
-    Ok(())
+    Ok(tables)
 }
 
-fn cleanup() -> std::io::Result<()> {
-    fs::remove_dir_all(config::config::DATA_DIR)?;
+fn cleanup(buffer_pool: &mut BufferPoolManager) {
+    buffer_pool.flush_all_pages();
     println!("cleaned up!");
-    Ok(())
 }
 
 
 fn main() {
-    init();
-    let mut input = String::new();
-    let stdin = io::stdin();
+    
     let pool_size=4;
     let mut memory = vec![0u8; pool_size * PAGE_SIZE];
-    let buffer_pool = BufferPoolManager::new(&mut memory, pool_size, 2);
+    let mut buffer_pool = BufferPoolManager::new(&mut memory, pool_size, 2);
     let mut scanner = Scanner::new();
     let mut parser = Parser::new();
+
+    let mut tables = init(&mut buffer_pool).unwrap();
+
+    let mut input = String::new();
+    let stdin = io::stdin();
+
     loop {
         print!("> ");
         io::Write::flush(&mut io::stdout()).ok().expect("Couldn't flush stdout");
@@ -52,7 +70,10 @@ fn main() {
                         let r = parser.parse(&scanner.tokens);
                         match r {
                             Ok(statements) => {
-                                println!("{:?}", statements)
+                                println!("{:?}", statements);
+                                for stmt in &statements {
+                                    execute(&mut buffer_pool, &mut tables, stmt);
+                                }
                             },
                             Err(_) => {
                                 println!("tokens: {:?}", scanner.tokens);
@@ -71,7 +92,7 @@ fn main() {
             Err(error) => println!("error: {}", error),
         }
     }
-    //storage::buffer_pool::get_page(3);
-    let _ = cleanup();
+
+    cleanup(&mut buffer_pool);
     
 }

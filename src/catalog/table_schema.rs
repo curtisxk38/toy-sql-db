@@ -21,7 +21,7 @@ pub fn decode_column_type(u: u8) -> ColumnType {
 }
 
 
-struct Column {
+pub struct Column {
     pub name: String,
     pub column_type: ColumnType
 }
@@ -32,17 +32,17 @@ impl Column {
     }
 }
 
-struct TableSchema {
+pub struct TableSchema {
     pub name: String,
     pub first_page_id: u32,
     pub columns: Vec<Column>
 }
 
 impl TableSchema {
-    fn new(name: String, columns: Vec<Column>, first_page_id: u32) -> TableSchema {
+    pub fn new(name: String, columns: Vec<Column>, first_page_id: u32) -> TableSchema {
         TableSchema {name, first_page_id, columns}
     }
-    fn serialize(&self) -> Vec<u8> {
+    pub fn serialize(&self) -> Vec<u8> {
         // layout in bytes
         // [length of name] [name] [page id of first page] [number of columns] [column entries]+
         // where each column entry is [column type][column name length][column name]
@@ -69,7 +69,7 @@ impl TableSchema {
         res
     }
 
-    fn deserialize(data: Vec<u8>) -> TableSchema {
+    pub fn deserialize(data: Vec<u8>) -> TableSchema {
         // see serialize
         let mut bytes_read = 0;
         

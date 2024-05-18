@@ -34,7 +34,7 @@ impl DiskManager {
 
     fn get_file(&self, page_id: &PageId) -> PageLocation{
         // for now all pages live in one file
-        let index: usize = page_id.temp();
+        let index: usize = page_id.0;
         PageLocation {page_id: page_id.clone(), file: self.file_dir.join(DATA_FILE), index: PathIndex(index) }
     }
 

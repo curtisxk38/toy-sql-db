@@ -2,6 +2,8 @@ use std::{cell::RefCell, rc::Rc};
 
 use crate::config::config::PAGE_SIZE;
 
+use super::buffer_pool::PageTableEntry;
+
 
 /**
  * Slotted page format:
@@ -29,41 +31,43 @@ const TABLE_PAGE_HEADER_SIZE: usize = 8; // in bytes
 const SLOT_ARRAY_ENTRY_SIZE: usize = 8;
 
 #[derive(Eq, Hash, PartialEq, Clone)]
-pub struct TupleId(usize);
+pub struct TupleId(pub usize);
 
-struct TablePage<'a> {
-    next_page_id: u32,
+pub struct TablePage<'a> {
+    next_page_id: Option<u32>,
     num_tuples: u16,
     num_deleted_tuples: u16,
-    page_data: Rc<RefCell<&'a mut [u8]>>,
+    page: Rc<RefCell<PageTableEntry<'a>>>,
 }
 
 impl <'a> TablePage<'a> {
-    pub fn new(page_data: Rc<RefCell<&'a mut [u8]>>) -> TablePage<'a> {
-        let d = page_data.borrow();
+    pub fn new(page: Rc<RefCell<PageTableEntry<'a>>>) -> TablePage<'a> {
+        let p = page.borrow();
 
-        let next_page_id: &[u8] = &d[0..4];
+        let next_page_id: &[u8] = &p.data[0..4];
         let next_page_id = u32::from_le_bytes(next_page_id.try_into().unwrap());
 
-        let num_tuples: &[u8] = &d[4..6];
+        let next_page_id = if next_page_id == 0 {None} else {Some(next_page_id)};
+
+        let num_tuples: &[u8] = &p.data[4..6];
         let num_tuples = u16::from_le_bytes(num_tuples.try_into().unwrap());
 
-        let num_deleted_tuples: &[u8] = &d[6..8];
+        let num_deleted_tuples: &[u8] = &p.data[6..8];
         let num_deleted_tuples = u16::from_le_bytes(num_deleted_tuples.try_into().unwrap());
 
-        std::mem::drop(d); // this is kinda dumb but works
+        std::mem::drop(p); // this is kinda dumb but works
 
-        TablePage { next_page_id, num_tuples, num_deleted_tuples, page_data }
+        TablePage { next_page_id, num_tuples, num_deleted_tuples, page }
     }
 
-    fn get_num_tuples(&self) -> u16 {
+    pub fn get_num_tuples(&self) -> u16 {
         self.num_tuples
     }
 
     fn set_num_tuples(&mut self, num_tuples: u16) {
         self.num_tuples = num_tuples;
         let num_tuples = num_tuples.to_le_bytes();
-        self.page_data.borrow_mut()[4..6].copy_from_slice(&num_tuples);
+        self.page.borrow_mut().data[4..6].copy_from_slice(&num_tuples);
     }
 
     pub fn get_next_tuple_offset(&self, tuple: &Vec<u8>) -> Option<usize> {
@@ -72,7 +76,7 @@ impl <'a> TablePage<'a> {
         if num_tuples > 0 {
         
             let last_slot_array_entry_offset = TABLE_PAGE_HEADER_SIZE + (num_tuples - 1) * SLOT_ARRAY_ENTRY_SIZE;
-            let last_slot_array_entry = &self.page_data.borrow()[last_slot_array_entry_offset..last_slot_array_entry_offset+2];
+            let last_slot_array_entry = &self.page.borrow().data[last_slot_array_entry_offset..last_slot_array_entry_offset+2];
 
             let last_slot_array_entry = u16::from_le_bytes(last_slot_array_entry.try_into().unwrap());
             slot_end_offset = last_slot_array_entry.try_into().unwrap();
@@ -95,7 +99,7 @@ impl <'a> TablePage<'a> {
                 self.set_num_tuples(tuple_id+1);
                 
                 // copy data in
-                self.page_data.borrow_mut()[tuple_offset..tuple_offset+tuple.len()].copy_from_slice(&tuple[..]);
+                self.page.borrow_mut().data[tuple_offset..tuple_offset+tuple.len()].copy_from_slice(&tuple[..]);
 
                 // update slot array
                 let tuple_offset_bytes: u16 = tuple_offset.try_into().unwrap();
@@ -109,7 +113,7 @@ impl <'a> TablePage<'a> {
                 offset_size_bytes[2..4].copy_from_slice(&tuple_size_bytes);
                 
                 let new_slot_array_index: usize = TABLE_PAGE_HEADER_SIZE + Into::<usize>::into(tuple_id) * SLOT_ARRAY_ENTRY_SIZE;
-                self.page_data.borrow_mut()[new_slot_array_index..new_slot_array_index+SLOT_ARRAY_ENTRY_SIZE].copy_from_slice(&offset_size_bytes);
+                self.page.borrow_mut().data[new_slot_array_index..new_slot_array_index+SLOT_ARRAY_ENTRY_SIZE].copy_from_slice(&offset_size_bytes);
 
                 Some(TupleId(tuple_id.into()))
             },
@@ -121,11 +125,11 @@ impl <'a> TablePage<'a> {
         if tuple_id.0 < self.get_num_tuples().into() {
             let slot_index = TABLE_PAGE_HEADER_SIZE + tuple_id.0 * SLOT_ARRAY_ENTRY_SIZE;
             
-            let tuple_offset_size_meta = &self.page_data.borrow()[slot_index..slot_index+SLOT_ARRAY_ENTRY_SIZE];
+            let tuple_offset_size_meta = &self.page.borrow().data[slot_index..slot_index+SLOT_ARRAY_ENTRY_SIZE];
             let tuple_offset: usize = u16::from_le_bytes(tuple_offset_size_meta[0..2].try_into().unwrap()).try_into().unwrap();
             let tuple_size: usize = u16::from_le_bytes(tuple_offset_size_meta[2..4].try_into().unwrap()).try_into().unwrap();
 
-            let tuple = self.page_data.borrow()[tuple_offset..tuple_offset+tuple_size].to_vec();
+            let tuple = self.page.borrow().data[tuple_offset..tuple_offset+tuple_size].to_vec();
 
             tuple
         } else {
@@ -139,7 +143,7 @@ impl <'a> TablePage<'a> {
 mod tests {
     use std::{cell::RefCell, rc::Rc};
 
-    use crate::{config::config::PAGE_SIZE, storage::table_page::TupleId};
+    use crate::{config::config::PAGE_SIZE, storage::{buffer_pool::{FrameId, PageTableEntry}, table_page::TupleId}};
 
     use super::{TablePage};
 
@@ -154,7 +158,8 @@ mod tests {
             0xC0, 0x0F, // offset = 4032
             0x40, 0x00 // size = 64
         ];
-        let p = TablePage::new(Rc::from(RefCell::from(&mut page_data[..])));
+        let pte = PageTableEntry::new(FrameId::from(0), &mut page_data);
+        let p = TablePage::new(Rc::from(RefCell::from(pte)));
         assert_eq!(p.get_num_tuples(), 1);
         
         let tuple: Vec<u8> = vec![0; 32];
@@ -179,7 +184,8 @@ mod tests {
             0x40, 0x00 // size = 64
         ];
         page_data[..start.len()].copy_from_slice(&start);
-        let mut p = TablePage::new(Rc::from(RefCell::from(&mut page_data[..])));
+        let pte = PageTableEntry::new(FrameId::from(0), &mut page_data);
+        let mut p = TablePage::new(Rc::from(RefCell::from(pte)));
         assert_eq!(p.get_num_tuples(), 1);
         
         let tuple: Vec<u8> = vec![0xFF; 32];
@@ -189,5 +195,7 @@ mod tests {
 
         let res = p.get_tuple(TupleId(1));
         assert_eq!(res, tuple);
+
+        assert_eq!(p.get_num_tuples(), 2)
     }
 }
