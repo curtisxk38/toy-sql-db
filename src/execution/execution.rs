@@ -1,17 +1,16 @@
-use crate::{catalog::table_schema::{Column, TableSchema}, parse::ast::{CreateTableStatement, Statement}, storage::{buffer_pool::{BufferPoolManager, PageId}, table_page::TablePage}};
+use crate::{catalog::table_schema::{Column, TableSchema}, parse::ast::{CreateTableStatement, Statement}, planner::query_plan::{CreateTablePlan, QueryPlan}, storage::{buffer_pool::{BufferPoolManager, PageId}, table_page::TablePage}};
 
 
-pub fn execute(buffer_pool: &mut BufferPoolManager, tables: &mut Vec<TableSchema>, statement: &Statement) {
-    match statement {
-        Statement::SelectStatement(_) => todo!(),
-        Statement::InsertStatement(_) => todo!(),
-        Statement::CreateTableStatement(stmt) => {
-            execute_create_table(buffer_pool, tables, stmt)
-        }
+pub fn execute(buffer_pool: &mut BufferPoolManager, tables: &mut Vec<TableSchema>, plan: QueryPlan) {
+    match plan {
+        QueryPlan::CreateTablePlan(plan) => {
+            execute_create_table(buffer_pool, tables, &plan)
+        },
     }
 }
 
-fn execute_create_table(buffer_pool: &mut BufferPoolManager, tables: &mut Vec<TableSchema>, stmt: &CreateTableStatement) {
+fn execute_create_table(buffer_pool: &mut BufferPoolManager, tables: &mut Vec<TableSchema>, plan: &CreateTablePlan) {
+    let stmt = &plan.stmt;
     let table_name = stmt.token.lexeme.clone();
     let columns = stmt.columns.iter().map(|c| {
         Column {name: c.token.lexeme.clone(), column_type: match c.column_type {

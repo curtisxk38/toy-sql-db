@@ -5,12 +5,13 @@ use config::config::PAGE_SIZE;
 use parse::{parser::Parser, scanner::Scanner};
 use storage::buffer_pool::BufferPoolManager;
 
-use crate::{catalog::catalog::load_catalog, execution::execution::execute};
+use crate::{catalog::catalog::load_catalog, execution::execution::execute, planner::planner::plan};
 
 mod storage;
 mod config;
 mod parse;
 mod catalog;
+mod planner;
 mod execution;
 
 
@@ -71,8 +72,9 @@ fn main() {
                         match r {
                             Ok(statements) => {
                                 println!("{:?}", statements);
-                                for stmt in &statements {
-                                    execute(&mut buffer_pool, &mut tables, stmt);
+                                for stmt in statements {
+                                    let plan = plan(&mut buffer_pool, &mut tables, stmt).expect("plan");
+                                    execute(&mut buffer_pool, &mut tables, plan);
                                 }
                             },
                             Err(_) => {

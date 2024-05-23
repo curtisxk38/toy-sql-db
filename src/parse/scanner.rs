@@ -15,6 +15,7 @@ pub struct Scanner {
 pub enum TError {
     ScanError(String),
     ParseError(String),
+    PlanError(String),
 }
 
 impl<'a> Scanner {
