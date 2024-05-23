@@ -1,6 +1,6 @@
 use std::{fmt::format, iter::Peekable, slice::Iter};
 
-use super::{ast::{Column, ColumnType, CreateTableStatement, Statement}, scanner::TError, token::{Token, TokenType}};
+use super::{ast::{Column, ColumnType, CreateTableStatement, Expr, InsertStatement, Literal, Statement}, scanner::TError, token::{Token, TokenType}};
 
 
 
@@ -119,8 +119,169 @@ impl Parser {
         todo!()
     }
     
+    // insert -> "insert" "into" identifier "(" identifier ("," identifier)*  ")" "values" value+ ";"
     fn insert(&self, tokens: &mut Peekable<Iter<Token>>) -> Result<Statement, TError> {
-        todo!()
+        tokens.next(); // consume "insert"
+
+        match tokens.peek().unwrap().token_type {
+            TokenType::Into => {
+                tokens.next(); // consume "into"
+            },
+            _ => {
+                let token = tokens.peek().unwrap();
+                return Err(TError::ParseError(
+                    format!("found unexpected {:?} at line {}. expected 'into' after insert", token, token.line)
+                ))
+            }
+        };
+
+        let identifier;
+        match tokens.peek().unwrap().token_type {
+            TokenType::Identifier => {
+                identifier = tokens.next().unwrap(); // consume identifier
+            },
+            _ => {
+                let token = tokens.peek().unwrap();
+                return Err(TError::ParseError(
+                    format!("found unexpected {:?} at line {}. expected identifier", token, token.line)
+                ))
+            }
+        };
+
+        match tokens.peek().unwrap().token_type {
+            TokenType::LeftParen => {
+                tokens.next(); // consume "("
+            },
+            _ => {
+                let token = tokens.peek().unwrap();
+                return Err(TError::ParseError(
+                    format!("found unexpected {:?} at line {}. expected '('", token, token.line)
+                ))
+            }
+        };
+
+        let mut columns = Vec::new();
+        loop {
+            match tokens.peek().unwrap().token_type {
+                TokenType::Identifier => {
+                    let identifier = tokens.next().unwrap(); // consume identifier
+                    columns.push(identifier.lexeme.clone());
+                    match tokens.peek().unwrap().token_type {
+                        TokenType::Comma => {
+                            tokens.next(); //consume ","
+                        }
+                        TokenType::RightParen => {
+                            tokens.next(); //consume ")"
+                            break;
+                        },
+                        _ => {
+
+                        }
+                    }
+                },
+                
+                _ => {
+                    let token = tokens.peek().unwrap();
+                    return Err(TError::ParseError(
+                        format!("found unexpected {:?} at line {}. expected identifier", token, token.line)
+                    ))
+                }
+            };
+        };
+
+        match tokens.peek().unwrap().token_type {
+            TokenType::Values => {
+                tokens.next(); // consume "values"
+            },
+            _ => {
+                let token = tokens.peek().unwrap();
+                return Err(TError::ParseError(
+                    format!("found unexpected {:?} at line {}. expected 'values'", token, token.line)
+                ))
+            }
+        };
+
+        let values = self.values(tokens)?;
+
+        match tokens.peek().unwrap().token_type {
+            TokenType::Semicolon => {
+                tokens.next(); // consume ";"
+            },
+            _ => {
+                let token = tokens.peek().unwrap();
+                return Err(TError::ParseError(
+                    format!("found unexpected {:?} at line {}. expected ';' after values", token, token.line)
+                ))
+            }
+        };
+
+        Ok(Statement::InsertStatement(InsertStatement { token: identifier.clone(), values}))
+
+    }
+    
+    // values -> ( "(" expr ("," expr)* ")" )+
+    fn values(&self, tokens: &mut Peekable<Iter<Token>>) -> Result<Vec<Vec<Expr>>, TError> {
+        let mut res = Vec::new();
+        loop {
+            match tokens.peek().unwrap().token_type {
+                TokenType::LeftParen => {
+                    tokens.next(); // consume "("
+                }
+                _ => {
+                    let token = tokens.peek().unwrap();
+                    return Err(TError::ParseError(
+                        format!("found unexpected {:?} at line {}. expected identifier", token, token.line)
+                    ))
+                }
+            };
+            let mut value = Vec::new();
+            loop {
+                let expr = self.expr(tokens)?;
+                value.push(expr);
+                match tokens.peek().unwrap().token_type {
+            
+                        TokenType::Comma => {
+                            tokens.next(); //consume ","
+                        }
+                        TokenType::RightParen => {
+                            tokens.next(); //consume ")"
+                            break;
+                        },
+                        _ => {
+
+                        }
+                    }
+            };
+            res.push(value);
+            match tokens.peek().unwrap().token_type {
+                TokenType::Comma => {
+                    tokens.next(); // consume ","
+                }
+                _ => {
+                    break;
+                }
+            };
+        };
+        Ok(res)
+    }
+
+    // expr -> literal | column_reference
+    fn expr(&self, tokens: &mut Peekable<Iter<Token>>) -> Result<Expr, TError> {
+        match tokens.peek().unwrap().token_type {
+            TokenType::IntLiteral | TokenType::False | TokenType::True | TokenType::Null => {
+                let token = tokens.next().unwrap();
+                Ok(Expr::Literal(Literal { token: token.clone(), value: token.literal.as_ref().unwrap().clone() }))
+            }
+            TokenType::Identifier => {
+                todo!()
+            },
+            _ => {
+                let token = tokens.peek().unwrap();
+                Err(TError::ParseError(
+                    format!("found unexpected {:?} at line {}. expected literal", token, token.line)
+                ))
+            }
+        }
     }
     
     // create_table -> "CREATE" "TABLE" identifier "(" Column+ ")" ";"

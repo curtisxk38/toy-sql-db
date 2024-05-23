@@ -33,7 +33,8 @@ pub struct Table {
 
 #[derive(Debug)]
 pub struct InsertStatement {
-    
+    pub token: Token,
+    pub values: Vec<Vec<Expr>>, // todo fix this probably
 }
 #[derive(Debug)]
 pub struct CreateTableStatement {

@@ -100,6 +100,8 @@ impl<'a> Scanner {
             "select" => TokenType::Select,
             "from" => TokenType::From,
             "insert" => TokenType::Insert,
+            "into" => TokenType::Into,
+            "values" => TokenType::Values,
             "create" => TokenType::Create,
             "table" => TokenType::Table,
 

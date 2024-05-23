@@ -22,6 +22,8 @@ pub enum TokenType {
     Int,
     IntLiteral,
     Insert,
+    Into,
+    Values,
     Bool,
     Create,
     Table,
