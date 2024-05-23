@@ -215,7 +215,7 @@ impl Parser {
             }
         };
 
-        Ok(Statement::InsertStatement(InsertStatement { token: identifier.clone(), values}))
+        Ok(Statement::InsertStatement(InsertStatement { token: identifier.clone(), columns, values}))
 
     }
     

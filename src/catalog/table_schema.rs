@@ -1,5 +1,6 @@
 use std::str;
 
+#[derive(Clone, Debug)]
 pub enum ColumnType {
     Int,
     Bool

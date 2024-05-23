@@ -1,16 +1,16 @@
 use super::token::{LiteralValue, Token};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     ColumnReference(ColumnReference),
     Literal(Literal),
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Literal {
     pub token: Token,
     pub value: LiteralValue,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ColumnReference {
 
 }
@@ -34,6 +34,7 @@ pub struct Table {
 #[derive(Debug)]
 pub struct InsertStatement {
     pub token: Token,
+    pub columns: Vec<String>,
     pub values: Vec<Vec<Expr>>, // todo fix this probably
 }
 #[derive(Debug)]

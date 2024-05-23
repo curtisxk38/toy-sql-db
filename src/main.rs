@@ -73,7 +73,7 @@ fn main() {
                             Ok(statements) => {
                                 println!("{:?}", statements);
                                 for stmt in statements {
-                                    let plan = plan(&mut buffer_pool, &mut tables, stmt).expect("plan");
+                                    let plan = plan(&mut tables, stmt).expect("plan");
                                     execute(&mut buffer_pool, &mut tables, plan);
                                 }
                             },
