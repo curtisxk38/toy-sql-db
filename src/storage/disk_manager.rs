@@ -57,7 +57,7 @@ impl DiskManager {
 
 #[cfg(test)]
 mod tests {
-    use crate::{config::config::PAGE_SIZE, storage::buffer_pool::{FrameId, PageId}};
+    use crate::{config::config::PAGE_SIZE, storage::buffer_pool::{FrameId, PageId}, test::TestSetup};
 
     use super::DiskManager;
 
@@ -65,10 +65,11 @@ mod tests {
     #[test]
     fn simple() {
         let mut dm = DiskManager::new();
-        let data = vec![1; PAGE_SIZE];
+        let data = vec![2; PAGE_SIZE];
         let p = PageId::from(0);
         dm.write_page(&p, &data);
         let r = dm.read_page(&p);
         assert_eq!(r, data);
+        let _setup = TestSetup;
     }
 }

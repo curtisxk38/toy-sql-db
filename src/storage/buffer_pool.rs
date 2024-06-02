@@ -275,10 +275,11 @@ impl <'a> BufferPoolManager<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{config::config::PAGE_SIZE, storage::buffer_pool::{BufferPoolManager, FrameId, PageId}};
+    use crate::{config::config::PAGE_SIZE, storage::buffer_pool::{BufferPoolManager, FrameId, PageId}, test::TestSetup};
 
     #[test]
     fn simple() {
+        let _setup = TestSetup;
         let pool_size= 4;
         let mut memory = vec![0u8; pool_size * PAGE_SIZE];
         let mut buffer_pool = BufferPoolManager::new(&mut memory, pool_size, 2);
@@ -290,6 +291,7 @@ mod tests {
 
     #[test]
     fn simple2() {
+        let _setup = TestSetup;
         let pool_size= 2;
         let mut memory = vec![0u8; pool_size * PAGE_SIZE];
         let mut buffer_pool = BufferPoolManager::new(&mut memory, pool_size, 2);

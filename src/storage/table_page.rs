@@ -143,7 +143,7 @@ impl <'a> TablePage<'a> {
 mod tests {
     use std::{cell::RefCell, rc::Rc};
 
-    use crate::{config::config::PAGE_SIZE, storage::{buffer_pool::{FrameId, PageTableEntry}, table_page::TupleId}};
+    use crate::{config::config::PAGE_SIZE, storage::{buffer_pool::{FrameId, PageTableEntry}, table_page::TupleId}, test::TestSetup};
 
     use super::{TablePage};
 
@@ -169,6 +169,7 @@ mod tests {
         let expected = 4000;
 
         assert_eq!(offset, expected);
+        let _setup = TestSetup;
     }
     #[test]
     fn test_insert_tuple() {
@@ -196,6 +197,7 @@ mod tests {
         let res = p.get_tuple(TupleId(1));
         assert_eq!(res, tuple);
 
-        assert_eq!(p.get_num_tuples(), 2)
+        assert_eq!(p.get_num_tuples(), 2);
+        let _setup = TestSetup;
     }
 }

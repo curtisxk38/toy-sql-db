@@ -111,6 +111,8 @@ impl TableSchema {
 
 #[cfg(test)]
 mod tests {
+    use crate::test::TestSetup;
+
     use super::{Column, ColumnType, TableSchema};
 
     

@@ -13,6 +13,7 @@ mod parse;
 mod catalog;
 mod planner;
 mod execution;
+mod test;
 
 
 
