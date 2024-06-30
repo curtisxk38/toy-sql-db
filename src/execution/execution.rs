@@ -89,7 +89,7 @@ mod tests {
 
     use crate::{catalog::table_schema::{Column, TableSchema}, config::config::PAGE_SIZE, parse::{ast::{CreateTableStatement, Expr, Literal}, token::{Token, TokenType}}, planner::query_plan::{CreateTablePlan, InsertPlan}, storage::{buffer_pool::{self, BufferPoolManager, FrameId, PageId, PageTableEntry}, table_page::{TablePage, TupleId}}, test::TestSetup};
 
-    use super::execute_create_table;
+    use super::{execute_create_table, execute_insert_values, find_latest_page};
 
     #[test]
     fn test_create_table() { 
@@ -118,26 +118,37 @@ mod tests {
         assert_eq!(tables.len(), 1);
     }
 
-    // #[test]
-    // fn test_insert_values() {
-    //     let plan = InsertPlan {table: String::from("1"), values: vec![vec![
-    //         Expr::Literal(Literal {
-    //         token: Token {token_type: crate::parse::token::TokenType::Int, lexeme: String::from("0"), literal: None, line: 0, id: 0}, value: crate::parse::token::LiteralValue::IntValue(0)
-    //         }),
-    //         Expr::Literal(Literal {
-    //             token: Token {token_type: crate::parse::token::TokenType::Int, lexeme: String::from("1"), literal: None, line: 0, id: 0}, value: crate::parse::token::LiteralValue::IntValue(1)
-    //             },
-    //     )]]};
+    #[test]
+    fn test_insert_values() {
+        let plan = InsertPlan {table: String::from("1"), values: vec![vec![
+            Expr::Literal(Literal {
+            token: Token {token_type: crate::parse::token::TokenType::Int, lexeme: String::from("0"), literal: None, line: 0, id: 0}, value: crate::parse::token::LiteralValue::IntValue(0)
+            }),
+            Expr::Literal(Literal {
+                token: Token {token_type: crate::parse::token::TokenType::Int, lexeme: String::from("1"), literal: None, line: 0, id: 0}, value: crate::parse::token::LiteralValue::IntValue(1)
+                },
+        )]]};
 
-    //     let tables = vec![TableSchema {
-    //         name: String::from("1"),
-    //         first_page_id: 1,
-    //         columns: vec![
-    //             Column {name: String::from("0"), column_type: crate::catalog::table_schema::ColumnType::Int},
-    //             Column {name: String::from("1"), column_type: crate::catalog::table_schema::ColumnType::Int}
-    //         ]
-    //     }];
+        let mut tables = vec![TableSchema {
+            name: String::from("1"),
+            first_page_id: 1,
+            columns: vec![
+                Column {name: String::from("0"), column_type: crate::catalog::table_schema::ColumnType::Int},
+                Column {name: String::from("1"), column_type: crate::catalog::table_schema::ColumnType::Int}
+            ]
+        }];
 
-    // }
+        let pool_size= 4;
+        let mut memory = vec![0u8; pool_size * PAGE_SIZE];
+        let mut buffer_pool = BufferPoolManager::new(&mut memory, pool_size, 2);
+
+        execute_insert_values(&mut buffer_pool, &mut tables, &plan);
+
+        let latest_page = find_latest_page(&tables[0]);
+        let page = buffer_pool.fetch_page(PageId(latest_page.try_into().unwrap())).unwrap();
+        let table = TablePage::new(page);
+        assert_eq!(table.get_num_tuples(), 1);
+
+    }
 
 }
