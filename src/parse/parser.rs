@@ -1,6 +1,6 @@
 use std::{fmt::format, iter::Peekable, slice::Iter};
 
-use super::{ast::{Column, ColumnType, CreateTableStatement, Expr, InsertStatement, Literal, Statement}, scanner::TError, token::{Token, TokenType}};
+use super::{ast::{Column, ColumnType, CreateTableStatement, Expr, InsertStatement, Literal, SelectStatement, Statement, Table}, scanner::TError, token::{Token, TokenType}};
 
 
 
@@ -115,8 +115,56 @@ impl Parser {
         }
     }
     
+    // select -> "select" expr ("," expr)* "from" identifier ";"
     fn select(&self, tokens: &mut Peekable<Iter<Token>>) -> Result<Statement, TError> {
-        todo!()
+        tokens.next(); // consume "select"
+        let mut expressions = Vec::new();
+        loop {
+            let expr = self.expr(tokens)?;
+            expressions.push(expr);
+            match tokens.peek().unwrap().token_type {
+                    TokenType::Comma => {
+                        tokens.next(); //consume ","
+                    }
+                    TokenType::From => {
+                        tokens.next(); //consume "from"
+                        break;
+                    },
+                    _ => {
+
+                    }
+                }
+        };
+
+        let identifier;
+        match tokens.peek().unwrap().token_type {
+            TokenType::Identifier => {
+                identifier = tokens.next().unwrap(); // consume identifier
+            },
+            _ => {
+                let token = tokens.peek().unwrap();
+                return Err(TError::ParseError(
+                    format!("found unexpected {:?} at line {}. expected identifier", token, token.line)
+                ))
+            }
+        };
+
+        match tokens.peek().unwrap().token_type {
+            TokenType::Semicolon => {
+                tokens.next(); // consume ";"
+            },
+            _ => {
+                let token = tokens.peek().unwrap();
+                return Err(TError::ParseError(
+                    format!("found unexpected {:?} at line {}. expected ';' after table name", token, token.line)
+                ))
+            }
+        };
+
+        let from_item = Table {token: identifier.clone()};
+
+        Ok(Statement::SelectStatement(SelectStatement {expressions, from_item}))
+
     }
     
     // insert -> "insert" "into" identifier "(" identifier ("," identifier)*  ")" "values" value+ ";"

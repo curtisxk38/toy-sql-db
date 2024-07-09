@@ -12,7 +12,7 @@ pub struct Literal {
 }
 #[derive(Debug, Clone)]
 pub struct ColumnReference {
-
+    pub name: String,
 }
 #[derive(Debug)]
 pub enum Statement {
@@ -28,7 +28,7 @@ pub struct SelectStatement {
 
 #[derive(Debug)]
 pub struct Table {
-    token: Token,
+    pub token: Token,
 }
 
 #[derive(Debug)]

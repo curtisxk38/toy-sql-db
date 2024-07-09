@@ -1,15 +1,17 @@
 use std::collections::HashMap;
 
-use crate::{catalog::table_schema::{self, ColumnType, TableSchema}, parse::{ast::{Expr, InsertStatement, Statement}, scanner::TError}, storage::buffer_pool::BufferPoolManager};
+use crate::{catalog::table_schema::{self, ColumnType, TableSchema}, execution::operators::{Projection, SeqScan}, parse::{ast::{Expr, InsertStatement, SelectStatement, Statement}, scanner::TError}, storage::buffer_pool::BufferPoolManager};
 
-use super::query_plan::{CreateTablePlan, InsertPlan, QueryPlan};
+use super::query_plan::{CreateTablePlan, InsertPlan, QueryPlan, SelectPlan};
 
 
 
 
 pub fn plan(tables: &mut Vec<TableSchema>, statement: Statement) -> Result<QueryPlan, TError> {
     match statement {
-        Statement::SelectStatement(_) => todo!(),
+        Statement::SelectStatement(stmt) => {
+            plan_select(tables, stmt)
+        }
         Statement::InsertStatement(stmt) => {
             plan_insert(tables, stmt)
         },
@@ -17,6 +19,45 @@ pub fn plan(tables: &mut Vec<TableSchema>, statement: Statement) -> Result<Query
             Ok(QueryPlan::CreateTablePlan(CreateTablePlan {stmt} ))
         }
     }
+}
+
+fn plan_select(tables: &mut Vec<TableSchema>, stmt: SelectStatement) -> Result<QueryPlan, TError> {
+    let table_name = stmt.from_item.token.lexeme;
+    let mut table_schema = None;
+    for table in tables {
+        if table_name == table.name {
+            
+            table_schema = Some(table);
+            break;
+        }
+    };
+    if table_schema.is_none() {
+        return Err(TError::PlanError(format!("table {:?} not found", table_name)));
+    };
+    let table_schema = table_schema.unwrap();
+
+    for expr in &stmt.expressions {
+        match expr {
+            Expr::ColumnReference(col) => {
+                let mut found = false;
+                for col_def in &table_schema.columns {
+                    if col.name == col_def.name {
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    return Err(TError::PlanError(format!("column {:?} not found", col.name)));
+                }
+            }
+            Expr::Literal(_) => {},
+        }
+    };
+    // for now always do a sequential scan
+    let scan = SeqScan { table: table_schema.clone() };
+    
+    let projection = Projection { expressions: stmt.expressions.clone(), child: Box::new(scan)};
+    Ok(QueryPlan::SelectPlan(SelectPlan {projection}))
 }
 
 fn plan_insert(tables: &mut Vec<TableSchema>, stmt: InsertStatement) -> Result<QueryPlan, TError> {

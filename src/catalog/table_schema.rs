@@ -21,7 +21,7 @@ pub fn decode_column_type(u: u8) -> ColumnType {
     }
 }
 
-
+#[derive(Clone)]
 pub struct Column {
     pub name: String,
     pub column_type: ColumnType
@@ -33,6 +33,7 @@ impl Column {
     }
 }
 
+#[derive(Clone)]
 pub struct TableSchema {
     pub name: String,
     pub first_page_id: u32,

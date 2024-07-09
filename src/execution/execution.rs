@@ -1,4 +1,4 @@
-use crate::{catalog::table_schema::{Column, TableSchema}, parse::ast::{CreateTableStatement, Expr, Statement}, planner::query_plan::{CreateTablePlan, InsertPlan, QueryPlan}, storage::{buffer_pool::{BufferPoolManager, PageId}, table_page::TablePage}};
+use crate::{catalog::table_schema::{Column, TableSchema}, parse::ast::{CreateTableStatement, Expr, Statement}, planner::query_plan::{CreateTablePlan, InsertPlan, QueryPlan, SelectPlan}, storage::{buffer_pool::{BufferPoolManager, PageId}, table_page::TablePage}};
 
 
 pub fn execute(buffer_pool: &mut BufferPoolManager, tables: &mut Vec<TableSchema>, plan: QueryPlan) {
@@ -9,6 +9,7 @@ pub fn execute(buffer_pool: &mut BufferPoolManager, tables: &mut Vec<TableSchema
         QueryPlan::InsertPlan(plan) => {
             execute_insert_values(buffer_pool, tables, &plan)
         },
+        QueryPlan::SelectPlan(plan) => execute_select(buffer_pool, tables, &plan),
     }
 }
 
@@ -80,6 +81,10 @@ fn find_latest_page(table: &TableSchema) -> u32 {
     // this is incredibly dumb
     // TODO follow the linked list of pages
     table.first_page_id // for now we assume tables are only ever 1 page big
+}
+
+fn execute_select(buffer_pool: &mut BufferPoolManager, tables: &mut Vec<TableSchema>, plan: &SelectPlan) {
+    todo!()
 }
 
 
